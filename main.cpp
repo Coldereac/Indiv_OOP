@@ -236,12 +236,14 @@ protected:
     OrderType type;
 
 public:
-    Order(const string &user, vector<OrderItem> items = {}, OrderType type = OrderType::Standard) : user(user),
-                                                                                                    type(type) {
+    ~Order() override = default;
+
+    Order(const string &user, vector<OrderItem> &items, OrderType type = OrderType::Standard) : user(user),
+                                                                                                type(type) {
         if (user.empty()) {
             throw invalid_argument("User name cannot be empty.");
         }
-        this->items = std::move(items);
+        this->items = items;
     }
 
     void addItem(const OrderItem &item) { items.push_back(item); }
@@ -300,18 +302,23 @@ public:
 
 // Замовлення з прогресивною знижкою
 class ProgressiveDiscountOrder : public Order {
+
+    [[nodiscard]] double calculateDiscount(double sum) const {
+        if (sum > 7000) return sum * 0.2;
+        if (sum > 3000) return sum * 0.1;
+        return 0;
+    }
+
 public:
 
-    ProgressiveDiscountOrder(const string &user, vector<OrderItem> items = {}) : Order(user, std::move(items),
-                                                                                       OrderType::ProgressiveDiscount) {};
+    ProgressiveDiscountOrder(const string &user, vector<OrderItem> &items) : Order(user, items,
+                                                                                   OrderType::ProgressiveDiscount) {};
 
     ProgressiveDiscountOrder(ProgressiveDiscountOrder *copy) : Order(copy) {}
 
     [[nodiscard]] double calculateTotalPrice() const override {
         double total = Order::calculateTotalPrice();
-        if (total > 7000) return total - total * 0.2;
-        if (total > 3000) return total - total * 0.1;
-        return total;
+        return total - calculateDiscount(total);
     }
 
     friend ostream &operator<<(ostream &os, const ProgressiveDiscountOrder &order) {
@@ -323,9 +330,13 @@ public:
 class FixedDiscountOrder : public Order {
     float discount;
 
+    double calculateDiscount(double sum) const {
+        return sum * discount / 100;
+    }
+
 public:
-    FixedDiscountOrder(const string &user, vector<OrderItem> items = {}, float discount = 0) : Order(
-            user, std::move(items), OrderType::FixedDiscount), discount(discount) {
+    FixedDiscountOrder(const string &user, vector<OrderItem> items, float discount = 0) : Order(
+            user, items, OrderType::FixedDiscount), discount(discount) {
         if (discount < 0 || discount > 100) throw invalid_argument("Discount is out of adequate range(0-100)");
     }
 
@@ -333,7 +344,7 @@ public:
 
     [[nodiscard]] double calculateTotalPrice() const override {
         double total = Order::calculateTotalPrice();
-        return total - total * (discount / 100);
+        return total - calculateDiscount(total);
     }
 
     [[nodiscard]] string toString() const override {
@@ -552,7 +563,7 @@ public:
             }
         }
 
-        // Після успішної відправки додаємо замовлення до списку
+        // Після успішної відправки додаємо копію замовлення до списку
         Order *copy;
         auto type = order->getType();
         if (type == OrderType::FixedDiscount) {
@@ -627,7 +638,7 @@ public:
         int type;
         string model;
         double frameSize, wheelSize, price;
-        int gearCount, quantity;
+        int gearCount;
         input >> type >> model >> frameSize >> wheelSize >> gearCount >> price;
         Bike *bike;
         //в залежності від типу зчитуємо різні поля
